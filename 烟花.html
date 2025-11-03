@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>增强版烟花爆炸</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: #000;
+      touch-action: none; /* 避免手机点击时的默认行为 */
+    }
+    canvas {
+      display: block;
+    }
+    .tip {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: #fff;
+      font-size: 18px;
+      opacity: 0.8;
+      pointer-events: none; /* 不影响点击 */
+    }
+  </style>
+</head>
+<body>
+  <canvas id="fireworks"></canvas>
+  <div class="tip">点击屏幕放烟花 🎇</div>
+
+  <script>
+    const canvas = document.getElementById('fireworks');
+    const ctx = canvas.getContext('2d');
+    let width, height;
+    let fireworks = [];
+    let particles = [];
+    let sparks = []; // 爆炸时的闪光粒子
+
+    // 适配屏幕
+    function resizeCanvas() {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      canvas.width = width;
+      canvas.height = height;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    // 烟花发射类
+    class Firework {
+      constructor(x, y) {
+        this.x = x;
+        this.y = height;
+        this.targetX = x + (Math.random() - 0.5) * 50; // 轻微偏移，更自然
+        this.targetY = y + (Math.random() - 0.5) * 30;
+        this.color = `hsl(${Math.random() * 360}, 100%, 60%)`;
+        this.velocity = 6 + Math.random() * 2; // 速度随机
+        this.gravity = 0.03;
+        this.reachedTarget = false;
+        this.trail = []; // 发射轨迹
+      }
+
+      update() {
+        if (!this.reachedTarget) {
+          // 记录轨迹（让发射时更有拖尾感）
+          this.trail.push({x: this.x, y: this.y});
+          if (this.trail.length > 15) this.trail.shift();
+
+          // 向目标点运动
+          const dx = this.targetX - this.x;
+          const dy = this.targetY - this.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+          this.x += (dx / distance) * this.velocity;
+          this.y += (dy / distance) * this.velocity;
+          this.velocity *= 0.97; // 逐渐减速
+
+          // 到达目标点，触发爆炸
+          if (distance < 8 || this.velocity < 1) {
+            this.reachedTarget = true;
+            this.explode(); // 爆炸逻辑
+          }
+        }
+      }
+
+      draw() {
+        if (!this.reachedTarget) {
+          // 绘制发射轨迹
+          ctx.beginPath();
+          ctx.moveTo(this.trail[0]?.x || this.x, this.trail[0]?.y || this.y);
+          this.trail.forEach(point => {
+            ctx.lineTo(point.x, point.y);
+          });
+          ctx.strokeStyle = this.color;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+
+          // 绘制当前烟花头
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, 3, 0, Math.PI * 2);
+          ctx.fillStyle = this.color;
+          ctx.fill();
+        }
+      }
+
+      // 爆炸核心逻辑
+      explode() {
+        const particleCount = 150 + Math.floor(Math.random() * 100); // 150-250个粒子
+        const explosionSize = 80 + Math.random() * 40; // 爆炸范围
+
+        // 生成主爆炸粒子
+        for (let i = 0; i < particleCount; i++) {
+          const angle = Math.random() * Math.PI * 2; // 随机角度
+          const speed = (Math.random() * 3 + 2) * (explosionSize / 100); // 速度与范围匹配
+          particles.push(new Particle(
+            this.x, 
+            this.y, 
+            this.color,
+            Math.cos(angle) * speed,
+            Math.sin(angle) * speed
+          ));
+        }
+
+        // 生成爆炸瞬间的闪光粒子（更亮、消失更快）
+        const sparkCount = 30 + Math.floor(Math.random() * 20);
+        for (let i = 0; i < sparkCount; i++) {
+          const angle = Math.random() * Math.PI * 2;
+          const speed = Math.random() * 5 + 3;
+          sparks.push(new Spark(
+            this.x, 
+            this.y, 
+            `hsl(${Math.random() * 360}, 100%, 90%)`, // 高亮色
+            Math.cos(angle) * speed,
+            Math.sin(angle) * speed
+          ));
+        }
+      }
+    }
+
+    // 爆炸粒子类（主粒子）
+    class Particle {
+      constructor(x, y, color, vx, vy) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.vx = vx; // 水平速度（从爆炸函数传入）
+        this.vy = vy; // 垂直速度（从爆炸函数传入）
+        this.radius = 1.5 + Math.random() * 2; // 粒子大小随机
+        this.alpha = 1;
+        this.decay = 0.015 + Math.random() * 0.01; // 衰减速度随机
+        this.gravity = 0.04; // 下落重力
+      }
+
+      update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += this.gravity; // 受重力影响下落
+        this.alpha -= this.decay;
+
+        // 粒子闪烁效果（随机明暗变化）
+        this.radius = Math.max(0.5, this.radius + (Math.random() - 0.5) * 0.1);
+      }
+
+      draw() {
+        if (this.alpha <= 0) return;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        // 颜色带透明度
+        ctx.fillStyle = `${this.color}${Math.floor(this.alpha * 255).toString(16).padStart(2, '0')}`;
+        ctx.fill();
+      }
+    }
+
+    // 闪光粒子类（爆炸瞬间的亮点）
+    class Spark {
+      constructor(x, y, color, vx, vy) {
+        this.x = x;
+        this.y = y;
+        this.color = color;
+        this.vx = vx;
+        this.vy = vy;
+        this.radius = 2 + Math.random() * 1.5;
+        this.alpha = 1;
+        this.decay = 0.05 + Math.random() * 0.03; // 快速消失
+      }
+
+      update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.alpha -= this.decay;
+        this.radius *= 0.95; // 逐渐缩小
+      }
+
+      draw() {
+        if (this.alpha <= 0) return;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+        ctx.fillStyle = `${this.color}${Math.floor(this.alpha * 255).toString(16).padStart(2, '0')}`;
+        ctx.fill();
+      }
+    }
+
+    // 点击屏幕触发烟花
+    canvas.addEventListener('click', (e) => {
+      fireworks.push(new Firework(e.clientX, e.clientY));
+    });
+
+    // 动画循环
+    function animate() {
+      // 背景渐暗（保留烟花轨迹残影）
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+      ctx.fillRect(0, 0, width, height);
+
+      // 更新绘制烟花
+      fireworks.forEach((firework, i) => {
+        firework.update();
+        firework.draw();
+        if (firework.reachedTarget) {
+          fireworks.splice(i, 1);
+        }
+      });
+
+      // 更新绘制爆炸粒子
+      particles.forEach((particle, i) => {
+        particle.update();
+        particle.draw();
+        if (particle.alpha <= 0) {
+          particles.splice(i, 1);
+        }
+      });
+
+      // 更新绘制闪光粒子
+      sparks.forEach((spark, i) => {
+        spark.update();
+        spark.draw();
+        if (spark.alpha <= 0) {
+          sparks.splice(i, 1);
+        }
+      });
+
+      requestAnimationFrame(animate);
+    }
+
+    animate();
+  </script>
+</body>
+</html>
